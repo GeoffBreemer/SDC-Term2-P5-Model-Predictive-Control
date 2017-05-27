@@ -13,6 +13,8 @@
 using json = nlohmann::json;
 
 #define NUM_ELEMENTS 6
+#define POLY_INC 2.5
+#define NUM_POINTS 25
 
 // For converting back and forth between radians and degrees.
 constexpr double pi() { return M_PI; }
@@ -94,11 +96,10 @@ int main() {
           double psi          = j[1]["psi"];
           double v            = j[1]["speed"];
 
-          // Transform the coordinate space.
+          // Transform the coordinate space
           double x_rotation = cos(-psi);
           double y_rotation = sin(-psi);
           for (int i = 0; i < ptsx.size(); i++) {
-
             double x_trans = ptsx[i] - px;
             double y_trans = ptsy[i] - py;
 
@@ -118,41 +119,24 @@ int main() {
           double cte = polyeval(coeffs, 0);
           double epsi = -atan(coeffs[1]);
 
-          double steer_value = j[1]["steering_angle"];
-          double throttle_value = j[1]["throttle"];
-          double delay_t = .1;
-          const double Lf = 2.67;
-
-          // Factor in delay
-          double delay_x = v * delay_t;
-          double delay_y = 0;
-          double delay_psi = -v * steer_value / Lf * delay_t;
-          double delay_v = v + throttle_value * delay_t;
-          double delay_cte = cte + v*sin(epsi) * delay_t;
-          double delay_epsi = epsi-v*steer_value /Lf * delay_t;
-
           // Set state vector
           Eigen::VectorXd state(6);
-          state << delay_x, delay_y, delay_psi, delay_v, delay_cte, delay_epsi;
-//          state << 0, 0, 0, v, cte, epsi;
+          state << 0, 0, 0, v, cte, epsi;
 
+          // Pass state to solver
           auto vars = mpc.Solve(state, coeffs);
 
           // Calculate reference line
           vector<double> next_x_vals;
           vector<double> next_y_vals;
-
-          double poly_inc = 2.5;
-          int num_points = 25;
-          for (int i = 1; i < num_points; i++) {
-            next_x_vals.push_back(poly_inc*i);
-            next_y_vals.push_back(polyeval(coeffs, poly_inc*i));
+          for (int i = 1; i < NUM_POINTS; i++) {
+            next_x_vals.push_back(POLY_INC*i);
+            next_y_vals.push_back(polyeval(coeffs, POLY_INC*i));
           }
 
-          // Calculate MPC predicted trajectory
+          // Calculate MPC predicted trajectory using control inputs
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
-
           for (int i = 2; i < vars.size(); i++) {
             if(i%2 == 0) {
               mpc_x_vals.push_back(vars[i]);

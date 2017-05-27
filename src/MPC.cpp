@@ -5,38 +5,41 @@
 
 using CppAD::AD;
 
-// Constants used for the cost function, determined using trial and error
-#define CTE_FACT 2025
-#define ESPI_FACT 2025
-#define VEL_FACT 1
-
-#define STEER_FACT 6
-#define ACCEL_FACT 6
-
-#define STEER_RATE_FACT 210
-#define ACCEL_RATE_FACT 10
-
 #define NUM_ELEMENTS 6
 #define NUM_ACTUATORS 2
 
+// Cost function constants. Values were determined using trial and error
+#define CTE_FACT 5000  // Heavily penalize CTE and orientation errors
+#define ESPI_FACT 5000
+#define VEL_FACT 1     // Higher values will make the car reach the target speed faster, but results in a bumpy ride
+                       // and the car crashing very easily. Keep at 1. Perhaps using different values for penalizing
+                       // the accelerator may offset higher values for VEL_FACT, but this was not explored further
+
+// Penalizing the model for large steering magnitudes seems to minimise oscillations the most
+#define STEER_FACT 20000
+#define ACCEL_FACT 100      // Higher values result in a smoother ride but *very* poor acceleration
+
+// Penalizing actuator rate of change seems to have far little effect than penalizing actuator magnitude
+#define STEER_RATE_FACT 200
+#define ACCEL_RATE_FACT 10  // Higher values result in a smoother ride
+
+// Use a T of 1 second. Larger values of T result in wild oscillations and crashes. Small values of dt, even
+// when the value of T was kept at 1, also resulted in wild oscillations and crashes. Through trial and error
+// T is set to 1 second using N = 10 and dt = 0.1
 size_t N = 10;        // number of time steps
 double dt = .1;       // evaluation period
 
-// This value assumes the model presented in the classroom is used.
-//
-// It was obtained by measuring the radius formed by running the vehicle in the
-// simulator around in a circle with a constant steering angle and velocity on a
-// flat terrain.
-//
-// Lf was tuned until the the radius formed by the simulating the model
-// presented in the classroom matched the previous radius.
-//
-// This is the length from front to CoG that has a similar radius.
+// This value assumes the model presented in the classroom is used. It was obtained by measuring the radius formed by
+// running the vehicle in the simulator around in a circle with a constant steering angle and velocity on a
+// flat terrain. Lf was tuned until the the radius formed by the simulating the model presented in the classroom
+// matched the previous radius. This is the length from front to CoG that has a similar radius.
 const double Lf = 2.67;
 
 double reference_cte = 0;       // target CTE
 double reference_espi = 0;      // target orientation error
-double reference_v = 100;       // target speed
+double reference_v = 100;       // target speed, unfortunately the maximum speed achieved by the car using the current
+                                // cost function is about 50km/hr only. At least the ride itself looks smooth and safe,
+                                // though with some more abrupt breaking in some of the sharp bends
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Determine where one variable
@@ -58,14 +61,14 @@ public:
 
   typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
   void operator()(ADvector& fg, const ADvector& vars) {
-    // Determine the cost
+    // Determine the cost function
     fg[0] = 0;
 
     // Penalize based on the reference state
     for (int i = 0; i < N; i++) {
       fg[0] += CTE_FACT * CppAD::pow(vars[cte_start + i] - reference_cte, 2);     // cross track error
       fg[0] += ESPI_FACT * CppAD::pow(vars[epsi_start + i] - reference_espi, 2);  // orientation error
-      fg[0] += VEL_FACT * CppAD::pow(vars[v_start + i] - reference_v, 2);                    // velocity error
+      fg[0] += VEL_FACT * CppAD::pow(vars[v_start + i] - reference_v, 2);         // velocity error
     }
 
     // Penalize control input **magnitude**
@@ -111,9 +114,9 @@ public:
       AD<double> a0     = vars[a_start + i];
 
       AD<double> f0      = coeffs[0] + coeffs[1] * x0 + coeffs[2] * pow(x0, 2) + coeffs[3] * pow(x0, 3);
-      AD<double> psides0 = CppAD::atan(3*coeffs[3]* pow(x0, 2) + 2*coeffs[2]* x0 + coeffs[1]);
+      AD<double> psides0 = CppAD::atan(3 * coeffs[3] * pow(x0, 2) + 2*coeffs[2] * x0 + coeffs[1]);
 
-      // Calculate next state
+      // Calculate the next state
       fg[2 + x_start + i]    = x1 - (x0 + v0 * CppAD::cos(psi0) * dt);                // x
       fg[2 + y_start + i]    = y1 - (y0 + v0 * CppAD::sin(psi0) * dt);                // y
       fg[2 + psi_start + i]  = psi1 - (psi0 - v0 * delta0 / Lf * dt);                 // steering angle
