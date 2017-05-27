@@ -12,6 +12,8 @@
 // for convenience
 using json = nlohmann::json;
 
+#define NUM_ELEMENTS 6
+
 // For converting back and forth between radians and degrees.
 constexpr double pi() { return M_PI; }
 double deg2rad(double x) { return x * pi() / 180; }
@@ -87,26 +89,29 @@ int main() {
           // j[1] is the data JSON object
           vector<double> ptsx = j[1]["ptsx"];
           vector<double> ptsy = j[1]["ptsy"];
-          double px = j[1]["x"];
-          double py = j[1]["y"];
-          double psi = j[1]["psi"];
-          double v = j[1]["speed"];
+          double px           = j[1]["x"];
+          double py           = j[1]["y"];
+          double psi          = j[1]["psi"];
+          double v            = j[1]["speed"];
 
-          // Shift car reference angle to 90 degrees
-          for (int i = 0; i < ptsx.size(); i++ ) {
-            double shift_x = ptsx[i] - px;
-            double shift_y = ptsy[i] - py;
+          // Transform the coordinate space.
+          double x_rotation = cos(-psi);
+          double y_rotation = sin(-psi);
+          for (int i = 0; i < ptsx.size(); i++) {
 
-            ptsx[i] = (shift_x * cos(-psi) - shift_y * sin(-psi));
-            ptsy[i] = (shift_x * sin(-psi) + shift_y * cos(-psi));
+            double x_trans = ptsx[i] - px;
+            double y_trans = ptsy[i] - py;
+
+            ptsx[i] = x_trans * x_rotation - y_trans * y_rotation;
+            ptsy[i] = x_trans * y_rotation + y_trans * x_rotation;
           }
 
           double* ptrx = &ptsx[0];
           double* ptry = &ptsy[0];
-          Eigen::Map<Eigen::VectorXd> ptsx_transform(ptrx, 6);
-          Eigen::Map<Eigen::VectorXd> ptsy_transform(ptry, 6);
+          Eigen::Map<Eigen::VectorXd> ptsx_transform(ptrx, NUM_ELEMENTS);
+          Eigen::Map<Eigen::VectorXd> ptsy_transform(ptry, NUM_ELEMENTS);
 
-          // Fit polyline
+          // Fit a third degree polyline
           auto coeffs = polyfit(ptsx_transform, ptsy_transform, 3);
 
           // Calculate CTE and orientation error
@@ -129,6 +134,7 @@ int main() {
           // Set state vector
           Eigen::VectorXd state(6);
           state << delay_x, delay_y, delay_psi, delay_v, delay_cte, delay_epsi;
+//          state << 0, 0, 0, v, cte, epsi;
 
           auto vars = mpc.Solve(state, coeffs);
 

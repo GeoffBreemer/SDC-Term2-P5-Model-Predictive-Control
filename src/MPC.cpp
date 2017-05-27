@@ -3,16 +3,21 @@
 #include <cppad/ipopt/solve.hpp>
 #include "Eigen-3.3/Eigen/Core"
 
-#define CTE_FACT 1980
+using CppAD::AD;
+
+// Constants used for the cost function, determined using trial and error
+#define CTE_FACT 2025
+#define ESPI_FACT 2025
+#define VEL_FACT 1
+
 #define STEER_FACT 6
-#define ACCEL_FACT 5
-#define STEER_RATE_FACT 195
+#define ACCEL_FACT 6
+
+#define STEER_RATE_FACT 210
 #define ACCEL_RATE_FACT 10
 
 #define NUM_ELEMENTS 6
 #define NUM_ACTUATORS 2
-
-using CppAD::AD;
 
 size_t N = 10;        // number of time steps
 double dt = .1;       // evaluation period
@@ -29,21 +34,21 @@ double dt = .1;       // evaluation period
 // This is the length from front to CoG that has a similar radius.
 const double Lf = 2.67;
 
-double ref_cte = 0;     // CTE
-double ref_epsi = 0;    // orientation error
-double ref_v = 100;     // target speed
+double reference_cte = 0;       // target CTE
+double reference_espi = 0;      // target orientation error
+double reference_v = 100;       // target speed
 
 // The solver takes all the state variables and actuator
-// variables in a singular vector. Thus, we should to establish
-// when one variable starts and another ends to make our lives easier.
-size_t x_start = 0;
-size_t y_start = x_start + N;
-size_t psi_start = y_start + N;
-size_t v_start = psi_start + N;
-size_t cte_start = v_start + N;
-size_t epsi_start = cte_start + N;
+// variables in a singular vector. Determine where one variable
+// starts and another ends.
+size_t x_start     = 0;
+size_t y_start     = x_start + N;
+size_t psi_start   = y_start + N;
+size_t v_start     = psi_start + N;
+size_t cte_start   = v_start + N;
+size_t epsi_start  = cte_start + N;
 size_t delta_start = epsi_start + N;
-size_t a_start = delta_start + N - 1;
+size_t a_start     = delta_start + N - 1;
 
 class FG_eval {
 public:
@@ -58,63 +63,62 @@ public:
 
     // Penalize based on the reference state
     for (int i = 0; i < N; i++) {
-      fg[0] += CTE_FACT * CppAD::pow(vars[cte_start + i] - ref_cte, 2);   // cross track error
-      fg[0] += CTE_FACT * CppAD::pow(vars[epsi_start + i] - ref_epsi, 2); // orientation error
-      fg[0] += CppAD::pow(vars[v_start + i] - ref_v, 2);                  // velocity error
+      fg[0] += CTE_FACT * CppAD::pow(vars[cte_start + i] - reference_cte, 2);     // cross track error
+      fg[0] += ESPI_FACT * CppAD::pow(vars[epsi_start + i] - reference_espi, 2);  // orientation error
+      fg[0] += VEL_FACT * CppAD::pow(vars[v_start + i] - reference_v, 2);                    // velocity error
     }
 
-    // Penalize control input magnitude
+    // Penalize control input **magnitude**
     for (int i = 0; i < N - 1; i++) {
       fg[0] += STEER_FACT * CppAD::pow(vars[delta_start + i], 2);    // steering
       fg[0] += ACCEL_FACT * CppAD::pow(vars[a_start + i], 2);        // acceleration
     }
 
-    // Penalize change-rate of the control input for added temporal smoothness
+    // Penalize **change-rate** of the control input for added temporal smoothness
     for (int i = 0; i < N - 2; i++) {
       fg[0] += STEER_RATE_FACT * CppAD::pow(vars[delta_start + i + 1] - vars[delta_start + i], 2); // steering
       fg[0] += ACCEL_RATE_FACT * CppAD::pow(vars[a_start + i + 1] - vars[a_start + i], 2);         // acceleration
     }
 
-    // Add 1 to each of the starting indices due to cost being located at index 0 of `fg`.
-    // This bumps up the position of all the other values.
-    fg[1 + x_start] = vars[x_start];
-    fg[1 + y_start] = vars[y_start];
-    fg[1 + psi_start] = vars[psi_start];
-    fg[1 + v_start] = vars[v_start];
-    fg[1 + cte_start] = vars[cte_start];
+    // Add 1 to each of the starting indices due to cost being located at index 0 of `fg`
+    fg[1 + x_start]    = vars[x_start];
+    fg[1 + y_start]    = vars[y_start];
+    fg[1 + psi_start]  = vars[psi_start];
+    fg[1 + v_start]    = vars[v_start];
+    fg[1 + cte_start]  = vars[cte_start];
     fg[1 + epsi_start] = vars[epsi_start];
 
-    // The rest of the constraints
+    // The rest of the model constraints
     for (int i = 0; i < N - 1; i++) {
       // The state at time t+1
-      AD<double> x1 = vars[x_start + i + 1];
-      AD<double> y1 = vars[y_start + i + 1];
-      AD<double> psi1 = vars[psi_start + i + 1];
-      AD<double> v1 = vars[v_start + i + 1];
-      AD<double> cte1 = vars[cte_start + i + 1];
+      AD<double> x1    = vars[x_start + i + 1];
+      AD<double> y1    = vars[y_start + i + 1];
+      AD<double> psi1  = vars[psi_start + i + 1];
+      AD<double> v1    = vars[v_start + i + 1];
+      AD<double> cte1  = vars[cte_start + i + 1];
       AD<double> epsi1 = vars[epsi_start + i + 1];
 
       // The state at time t
-      AD<double> x0 = vars[x_start + i];
-      AD<double> y0 = vars[y_start + i];
-      AD<double> psi0 = vars[psi_start + i];
-      AD<double> v0 = vars[v_start + i];
-      AD<double> cte0 = vars[cte_start + i];
+      AD<double> x0    = vars[x_start + i];
+      AD<double> y0    = vars[y_start + i];
+      AD<double> psi0  = vars[psi_start + i];
+      AD<double> v0    = vars[v_start + i];
+      AD<double> cte0  = vars[cte_start + i];
       AD<double> epsi0 = vars[epsi_start + i];
 
       // Only consider the actuation at time t
       AD<double> delta0 = vars[delta_start + i];
-      AD<double> a0 = vars[a_start + i];
+      AD<double> a0     = vars[a_start + i];
 
-      AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2] * x0 * x0 + coeffs[3] * x0 * x0 * x0 ;
-      AD<double> psides0 = CppAD::atan(3*coeffs[3]* x0 * x0 + 2*coeffs[2]* x0 + coeffs[1]);
+      AD<double> f0      = coeffs[0] + coeffs[1] * x0 + coeffs[2] * pow(x0, 2) + coeffs[3] * pow(x0, 3);
+      AD<double> psides0 = CppAD::atan(3*coeffs[3]* pow(x0, 2) + 2*coeffs[2]* x0 + coeffs[1]);
 
       // Calculate next state
-      fg[2 + x_start + i] = x1 - (x0 + v0 * CppAD::cos(psi0) * dt);                   // x
-      fg[2 + y_start + i] = y1 - (y0 + v0 * CppAD::sin(psi0) * dt);                   // y
-      fg[2 + psi_start + i] = psi1 - (psi0 - v0 * delta0 / Lf * dt);                  // steering angle
-      fg[2 + v_start + i] = v1 - (v0 + a0 * dt);                                      // velocity
-      fg[2 + cte_start + i] = cte1 - ((f0 - y0) + (v0 * CppAD::sin(epsi0) * dt));     // CTE
+      fg[2 + x_start + i]    = x1 - (x0 + v0 * CppAD::cos(psi0) * dt);                // x
+      fg[2 + y_start + i]    = y1 - (y0 + v0 * CppAD::sin(psi0) * dt);                // y
+      fg[2 + psi_start + i]  = psi1 - (psi0 - v0 * delta0 / Lf * dt);                 // steering angle
+      fg[2 + v_start + i]    = v1 - (v0 + a0 * dt);                                   // velocity
+      fg[2 + cte_start + i]  = cte1 - ((f0 - y0) + (v0 * CppAD::sin(epsi0) * dt));    // CTE
       fg[2 + epsi_start + i] = epsi1 - ((psi0 - psides0) - v0 * delta0 / Lf * dt);    // orientation error
     }
   }
@@ -179,18 +183,18 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   }
 
   // Set constraint bounds
-  constraints_lowerbound[x_start] = x;
-  constraints_lowerbound[y_start] = y;
-  constraints_lowerbound[psi_start] = psi;
-  constraints_lowerbound[v_start] = v;
-  constraints_lowerbound[cte_start] = cte;
+  constraints_lowerbound[x_start]    = x;
+  constraints_lowerbound[y_start]    = y;
+  constraints_lowerbound[psi_start]  = psi;
+  constraints_lowerbound[v_start]    = v;
+  constraints_lowerbound[cte_start]  = cte;
   constraints_lowerbound[epsi_start] = epsi;
 
-  constraints_upperbound[x_start] = x;
-  constraints_upperbound[y_start] = y;
-  constraints_upperbound[psi_start] = psi;
-  constraints_upperbound[v_start] = v;
-  constraints_upperbound[cte_start] = cte;
+  constraints_upperbound[x_start]    = x;
+  constraints_upperbound[y_start]    = y;
+  constraints_upperbound[psi_start]  = psi;
+  constraints_upperbound[v_start]    = v;
+  constraints_upperbound[cte_start]  = cte;
   constraints_upperbound[epsi_start] = epsi;
 
   // Object that computes objective and constraints
@@ -228,12 +232,6 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // Cost
   auto cost = solution.obj_value;
   //std::cout << "Cost " << cost << std::endl;
-
-  // TODO: Return the first actuator values. The variables can be accessed with
-  // `solution.x[i]`.
-  //
-  // {...} is shorthand for creating a vector, so auto x1 = {1.0,2.0}
-  // creates a 2 element double vector.
 
   vector<double> result;
 
