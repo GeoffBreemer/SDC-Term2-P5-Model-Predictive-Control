@@ -1,106 +1,58 @@
-# CarND-Controls-MPC
-Self-Driving Car Engineer Nanodegree Program
-
----
-
-## Dependencies
-
-* cmake >= 3.5
- * All OSes: [click here for installation instructions](https://cmake.org/install/)
-* make >= 4.1
-  * Linux: make is installed by default on most Linux distros
-  * Mac: [install Xcode command line tools to get make](https://developer.apple.com/xcode/features/)
-  * Windows: [Click here for installation instructions](http://gnuwin32.sourceforge.net/packages/make.htm)
-* gcc/g++ >= 5.4
-  * Linux: gcc / g++ is installed by default on most Linux distros
-  * Mac: same deal as make - [install Xcode command line tools]((https://developer.apple.com/xcode/features/)
-  * Windows: recommend using [MinGW](http://www.mingw.org/)
-* [uWebSockets](https://github.com/uWebSockets/uWebSockets) == 0.14, but the master branch will probably work just fine
-  * Follow the instructions in the [uWebSockets README](https://github.com/uWebSockets/uWebSockets/blob/master/README.md) to get setup for your platform. You can download the zip of the appropriate version from the [releases page](https://github.com/uWebSockets/uWebSockets/releases). Here's a link to the [v0.14 zip](https://github.com/uWebSockets/uWebSockets/archive/v0.14.0.zip).
-  * If you have MacOS and have [Homebrew](https://brew.sh/) installed you can just run the ./install-mac.sh script to install this.
-* [Ipopt](https://projects.coin-or.org/Ipopt)
-  * Mac: `brew install ipopt --with-openblas`
-  * Linux
-    * You will need a version of Ipopt 3.12.1 or higher. The version available through `apt-get` is 3.11.x. If you can get that version to work great but if not there's a script `install_ipopt.sh` that will install Ipopt. You just need to download the source from the Ipopt [releases page](https://www.coin-or.org/download/source/Ipopt/) or the [Github releases](https://github.com/coin-or/Ipopt/releases) page.
-    * Then call `install_ipopt.sh` with the source directory as the first argument, ex: `bash install_ipopt.sh Ipopt-3.12.1`. 
-  * Windows: TODO. If you can use the Linux subsystem and follow the Linux instructions.
-* [CppAD](https://www.coin-or.org/CppAD/)
-  * Mac: `brew install cppad`
-  * Linux `sudo apt-get install cppad` or equivalent.
-  * Windows: TODO. If you can use the Linux subsystem and follow the Linux instructions.
-* [Eigen](http://eigen.tuxfamily.org/index.php?title=Main_Page). This is already part of the repo so you shouldn't have to worry about it.
-* Simulator. You can download these from the [releases tab](https://github.com/udacity/CarND-MPC-Project/releases).
+# Project 5: Model Predictive Control
 
 
+## The Model
+For this project the global kinematic model is used. It is a simplified dynamic model that ignores tire dynamics.
 
-## Basic Build Instructions
+### State
+The state tracks the position (i.e. x and y coordinates), orientation and speed of the car.
 
+### Actuators
+To control the car's state two actuators were used:
 
-1. Clone this repo.
-2. Make a build directory: `mkdir build && cd build`
-3. Compile: `cmake .. && make`
-4. Run it: `./mpc`.
+- `delta`: the steering angle, normalised and constrainted to [-1, 1]
+- `a`: acceleration with positive values modelling an accelerating car, and negative values a braking car, also constrained to [1, -1].
 
-## Tips
+### State update equations
+The actuators change the state over time like this:
 
-1. It's recommended to test the MPC on basic examples to see if your implementation behaves as desired. One possible example
-is the vehicle starting offset of a straight line (reference). If the MPC implementation is correct, after some number of timesteps
-(not too many) it should find and track the reference line.
-2. The `lake_track_waypoints.csv` file has the waypoints of the lake track. You could use this to fit polynomials and points and see of how well your model tracks curve. NOTE: This file might be not completely in sync with the simulator so your solution should NOT depend on it.
-3. For visualization this C++ [matplotlib wrapper](https://github.com/lava/matplotlib-cpp) could be helpful.
+- `x position`: old x position plus speed times the cosine of the orientation times the time step
+- `y position`: old y position plus speed times the sine of the orientation times the time step
+- `orientation`: old orientation plus speed times the steering angle times the time step / divided by a multiplicative factor.  
+- `speed`: old speed plus acceleration times the time step
 
-## Editor Settings
+Note:
 
-We've purposefully kept editor configuration files out of this repo in order to
-keep it as simple and environment agnostic as possible. However, we recommend
-using the following settings:
+- The multiplicative factor is a car specific constant. This constant (2.67) was given in the assignment for the simulated car being used. It measures the distance between the front of the vehicle and its center of gravity. The larger the vehicle, the slower the turn rate
+- The time step is the number of milliseconds between the current time and the time when the previous state was determined.
 
-* indent using spaces
-* set tab width to 2 spaces (keeps the matrices in source code aligned)
+### Minimising the error
+To minimise the error between the reference trajectory and the car's actual path the cost function penalises the current state as follows:
 
-## Code Style
+- `cross track error`: the difference between the center of the road and the car's position, the goal is to make this error zero
+- `orientation error`: the difference between the current orientation and the desired orientation, the goal is to make this error zero as well
+- `speed error`: the difference between the current speed and the target speed. In the model used for the project the target speed is a constant 100MPH, i.e. the car will attempt to always maintain the target speed. 
 
-Please (do your best to) stick to [Google's C++ style guide](https://google.github.io/styleguide/cppguide.html).
+The cost function also penalises actuator input:
 
-## Project Instructions and Rubric
+- `actuator magnitude`: large, i.e. more extreme, actuator inputs are penalised more than smaller, i.e. smoother, ones
+- `actuator change rate`: prevent sudden changes in actuator inputs between time stamps (i.e. sudden jerks of the steering wheel, fully pressing the accelerator)  
 
-Note: regardless of the changes you make, your project must be buildable using
-cmake and make!
+The various components that make up the cost function shown above, are each multiplied by a factor. The factors were determined through trial and error. For example, it seems that heavily penalizing steering wheel magnitude and change rate (e.g. using a high factor value of 5000), limits oscilliations and results in a smoother ride. Similarly, penalizing the accelerator magnitude and change rate also increases smoothness. However, it results in a car that accelerators (and brakes) very poorly. The result is that the car never reaches its target speed and consequently takes forever to go around the track. The factors can thus be used to find a balance between the car flying around the track and doing so in a smooth way, without crashing.
 
-More information is only accessible by people who are already enrolled in Term 2
-of CarND. If you are enrolled, see [the project page](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/f1820894-8322-4bb3-81aa-b26b3c6dcbaf/lessons/b1ff3be0-c904-438e-aad3-2b5379f0e0c3/concepts/1a2255a0-e23c-44cf-8d41-39b8a3c8264a)
-for instructions and the project rubric.
+## Timestep length and frequency
+Various values of `N` (number of time steps) and `delta t` (time between actuations), and thus `T` (prediction horizon in seconds) were tried. The final values used are:
 
-## Hints!
+- `N` is 10 time steps
+- `delta t` is 0.1 second
+- `T` is 1 second
 
-* You don't have to follow this directory structure, but if you do, your work
-  will span all of the .cpp files here. Keep an eye out for TODOs.
+It seems that higher values of `T`, i.e. looking further into the future, quickly results in wild oscillations and crashes. Small values of `delta t`, even when `T` was kept at 1 second by increasing `N` accordingly, *also* kept resulting in wild oscillations and crashes. This was a surprising result: with `T` kept constant, an increase in the number of time steps was expected to result in the car following the reference trajectory more accurately, albeit at a higher computational cost. Presumably the factors chosen to multiply the various components of the cost function as described earlier, play a role in this as well and will have to be changed as `T` changes.
 
-## Call for IDE Profiles Pull Requests
+Another complicating factor seemed to be that the target speed also seemed to play a role in determining `N`, `T` and `delta t`. The target speed was therefore first set and not changed going forward. Trial and error resulted in choosing the values shown above.
 
-Help your fellow students!
+## Polynomial Fitting and MPC Preprocessing
+Reference waypoints are converted into the car's coordinate space before a third degree polynomial is fitted.
 
-We decided to create Makefiles with cmake to keep this project as platform
-agnostic as possible. Similarly, we omitted IDE profiles in order to we ensure
-that students don't feel pressured to use one IDE or another.
-
-However! I'd love to help people get up and running with their IDEs of choice.
-If you've created a profile for an IDE that you think other students would
-appreciate, we'd love to have you add the requisite profile files and
-instructions to ide_profiles/. For example if you wanted to add a VS Code
-profile, you'd add:
-
-* /ide_profiles/vscode/.vscode
-* /ide_profiles/vscode/README.md
-
-The README should explain what the profile does, how to take advantage of it,
-and how to install it.
-
-Frankly, I've never been involved in a project with multiple IDE profiles
-before. I believe the best way to handle this would be to keep them out of the
-repo root to avoid clutter. My expectation is that most profiles will include
-instructions to copy files to a new location to get picked up by the IDE, but
-that's just a guess.
-
-One last note here: regardless of the IDE used, every submitted project must
-still be compilable with cmake and make./
+## Model Predictive Control with Latency
+Latency is handled by taking the current state and speed and projecting the x position 100ms into the future. The updated x position along with all other state elements (which are not changed) are passed to the solver. 

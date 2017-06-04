@@ -81,7 +81,7 @@ int main() {
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
     string sdata = string(data).substr(0, length);
-    cout << sdata << endl;
+//    cout << sdata << endl;
     if (sdata.size() > 2 && sdata[0] == '4' && sdata[1] == '2') {
       string s = hasData(sdata);
       if (s != "") {
@@ -96,7 +96,7 @@ int main() {
           double psi          = j[1]["psi"];
           double v            = j[1]["speed"];
 
-          // Transform the coordinate space
+          // Transform waypoints to car coordinate space
           double x_rotation = cos(-psi);
           double y_rotation = sin(-psi);
           for (int i = 0; i < ptsx.size(); i++) {
@@ -121,7 +121,12 @@ int main() {
 
           // Set state vector
           Eigen::VectorXd state(6);
-          state << 0, 0, 0, v, cte, epsi;
+
+          // Use the x position and speed of the current state and project it
+          // 100ms into the future to account for latency
+          double vx = 0 + v * 100 / (1000 * 60 * 60);
+          state << vx, 0, 0, v, cte, epsi;
+//          state << 0, 0, 0, v, cte, epsi;
 
           // Pass state to solver
           auto vars = mpc.Solve(state, coeffs);
@@ -161,7 +166,7 @@ int main() {
 
 
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-          std::cout << msg << std::endl;
+//          std::cout << msg << std::endl;
           // Latency
           // The purpose is to mimic real driving conditions where
           // the car does actuate the commands instantly.

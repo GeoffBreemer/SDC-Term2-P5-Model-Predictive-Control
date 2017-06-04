@@ -16,12 +16,12 @@ using CppAD::AD;
                        // the accelerator may offset higher values for VEL_FACT, but this was not explored further
 
 // Penalizing the model for large steering magnitudes seems to minimise oscillations the most
-#define STEER_FACT 20000
+#define STEER_FACT 5000
 #define ACCEL_FACT 100      // Higher values result in a smoother ride but *very* poor acceleration
 
 // Penalizing actuator rate of change seems to have far little effect than penalizing actuator magnitude
-#define STEER_RATE_FACT 200
-#define ACCEL_RATE_FACT 10  // Higher values result in a smoother ride
+#define STEER_RATE_FACT 500
+#define ACCEL_RATE_FACT 50  // Higher values result in a smoother ride
 
 // Use a T of 1 second. Larger values of T result in wild oscillations and crashes. Small values of dt, even
 // when the value of T was kept at 1, also resulted in wild oscillations and crashes. Through trial and error
@@ -237,6 +237,34 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   //std::cout << "Cost " << cost << std::endl;
 
   vector<double> result;
+
+  // ---
+//  double avg_delta = 0.0;
+//  double avg_a = 0.0;
+//
+//  int n_mean = 2;
+//  for (int i = 0; i < n_mean; i++)
+//  {
+//    avg_delta += solution.x[delta_start + i];
+//    avg_a += solution.x[a_start + i];
+//  }
+//
+//  avg_delta /= n_mean;
+//  avg_a /= n_mean;
+//  std::cout << "   delta: " << solution.x[delta_start] << std::endl;
+//  std::cout << "mu delta: " << avg_delta << std::endl;
+//  result.push_back(avg_delta);
+//  result.push_back(avg_a);
+
+//  result.push_back(solution.x[delta_start + 1]);
+//  result.push_back(solution.x[a_start + 1]);
+
+
+// ---
+
+
+
+
 
   result.push_back(solution.x[delta_start]);
   result.push_back(solution.x[a_start]);
